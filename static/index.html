@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Word Image Uploader</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="upload-card">
+            <div class="upload-header">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <h1>Word Image Uploader</h1>
+            </div>
+            <div class="upload-form">
+                <div class="file-input-container">
+                    <input type="file" id="folderInput" webkitdirectory directory multiple>
+                    <label for="folderInput">
+                        <i class="fas fa-folder-open"></i>
+                        Choose Folder
+                    </label>
+                    <span id="folder-name">No folder selected</span>
+                </div>
+                <button onclick="uploadImages()">
+                    <i class="fas fa-upload"></i>
+                    Upload Images
+                </button>
+            </div>
+            <div id="progress-container" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress" id="upload-progress"></div>
+                </div>
+                <span id="progress-text">Uploading...</span>
+            </div>
+        </div>
+        <div id="results" class="results-container"></div>
+    </div>
+    <footer class="footer">
+        Built with GO <span class="heart">❤️</span>
+    </footer>
+    <script src="script.js"></script>
+</body>
+</html>
