@@ -94,4 +94,4 @@ MIT License
 
 ## Author
 
-Built with ❤️ using Go
+Duypresso. Built with ❤️ using Go
