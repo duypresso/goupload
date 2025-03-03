@@ -47,23 +47,19 @@ images/
 ## Installation
 
 1. Clone the repository:
-```bash
 git clone <repository-url>
 cd goupload
 ```
 
 2. Install Go dependencies:
-```bash
 go mod tidy
 ```
 
 3. Run the application:
-```bash
 go run main.go
 ```
 
 4. Open your browser and navigate to:
-```
 http://localhost:8080
 ```
 
