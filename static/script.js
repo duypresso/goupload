@@ -5,10 +5,9 @@ document.getElementById('folderInput').addEventListener('change', function(e) {
 
 async function uploadImages() {
     const folderInput = document.getElementById('folderInput');
+    const processNested = document.getElementById('processNestedFolders').checked;
     const files = folderInput.files;
-    const progressBar = document.getElementById('upload-progress');
     const progressContainer = document.getElementById('progress-container');
-    const progressText = document.getElementById('progress-text');
 
     if (files.length === 0) {
         alert('Please select a folder');
@@ -23,20 +22,35 @@ async function uploadImages() {
     for (let file of files) {
         const path = file.webkitRelativePath;
         const parts = path.split('/');
-        if (parts.length >= 2) {
-            const letter = parts[0].toUpperCase();
-            if (!filesByDir[letter]) {
-                filesByDir[letter] = [];
+        
+        // Handle nested folders
+        if (processNested) {
+            // Process all folders that contain images
+            const parentFolder = parts[parts.length - 2].toUpperCase();
+            if (parts.length >= 2 && file.type.startsWith('image/')) {
+                if (!filesByDir[parentFolder]) {
+                    filesByDir[parentFolder] = [];
+                }
+                filesByDir[parentFolder].push(file);
             }
-            filesByDir[letter].push(file);
+        } else {
+            // Original behavior - only process first level folders
+            if (parts.length === 2) {
+                const letter = parts[0].toUpperCase();
+                if (!filesByDir[letter]) {
+                    filesByDir[letter] = [];
+                }
+                filesByDir[letter].push(file);
+            }
         }
     }
 
-    // Add files to formData
+    // Add files to formData with folder info
     for (let letter in filesByDir) {
         filesByDir[letter].forEach(file => {
             formData.append('files', file);
             formData.append('letters', letter);
+            formData.append('paths', file.webkitRelativePath);
         });
     }
 
@@ -60,19 +74,26 @@ function displayResults(results) {
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '';
     
-    results.forEach(item => {
-        const resultCard = document.createElement('div');
-        resultCard.className = 'result-item';
-        resultCard.innerHTML = `
-            <p><strong>Letter:</strong> ${item.letter}</p>
-            <p><strong>Word:</strong> ${item.word}</p>
-            <p><strong>Image:</strong><br>
-                <a href="${item.imageUrl}" target="_blank">
-                    View Image
-                    <i class="fas fa-external-link-alt"></i>
-                </a>
-            </p>
-        `;
-        resultsDiv.appendChild(resultCard);
+    results.forEach(letterGroup => {
+        const letterSection = document.createElement('div');
+        letterSection.className = 'letter-section';
+        letterSection.innerHTML = `<h2>Letter ${letterGroup.letter}</h2>`;
+        
+        letterGroup.words.forEach(item => {
+            const resultCard = document.createElement('div');
+            resultCard.className = 'result-item';
+            resultCard.innerHTML = `
+                <p><strong>Word:</strong> ${item.word}</p>
+                <p><strong>Image:</strong><br>
+                    <a href="${item.imageUrl}" target="_blank">
+                        View Image
+                        <i class="fas fa-external-link-alt"></i>
+                    </a>
+                </p>
+            `;
+            letterSection.appendChild(resultCard);
+        });
+        
+        resultsDiv.appendChild(letterSection);
     });
 }

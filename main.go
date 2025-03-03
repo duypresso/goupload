@@ -17,14 +17,19 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type WordImage struct {
-	Letter   string `json:"letter"`
-	Word     string `json:"word"`
-	ImageURL string `json:"imageUrl"`
+type Word struct {
+	Word     string `json:"word" bson:"word"`
+	ImageURL string `json:"imageUrl" bson:"imageUrl"`
+}
+
+type LetterWords struct {
+	Letter string `json:"letter" bson:"letter"`
+	Words  []Word `json:"words" bson:"words"`
 }
 
 var (
@@ -63,7 +68,16 @@ func init() {
 	}
 
 	fmt.Println("Connected to MongoDB!")
-	mongoDB = client.Database("wordimages").Collection("images")
+	// Use the correct database and collection
+	mongoDB = client.Database("alphabetgame").Collection("words")
+
+	// Print existing documents count
+	count, err := mongoDB.CountDocuments(ctx, bson.M{})
+	if err != nil {
+		log.Printf("Error counting documents: %v", err)
+	} else {
+		fmt.Printf("Found %d existing documents in words collection\n", count)
+	}
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +86,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form data (32MB max)
 	err := r.ParseMultipartForm(32 << 20)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -81,29 +94,32 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	files := r.MultipartForm.File["files"]
 	letters := r.MultipartForm.Value["letters"]
+	paths := r.MultipartForm.Value["paths"]
 
-	var results []WordImage
+	// Group files by letter
+	letterGroups := make(map[string][]Word)
+
 	for i, file := range files {
 		letter := letters[i]
+		path := paths[i]
 
-		// Open the uploaded file
 		src, err := file.Open()
 		if err != nil {
 			continue
 		}
 		defer src.Close()
 
-		// Read file content
 		fileContent, err := io.ReadAll(src)
 		if err != nil {
 			continue
 		}
 
-		// Get word from filename
+		// Get word from filename and clean it
 		word := strings.TrimSuffix(file.Filename, filepath.Ext(file.Filename))
+		word = strings.Title(strings.ToLower(word))
 
-		// Upload to S3
-		s3Key := fmt.Sprintf("assets/%s/%s", letter, file.Filename)
+		// Use the full path for S3 key to maintain folder structure
+		s3Key := fmt.Sprintf("assets/%s", path)
 		_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 			Bucket: aws.String(os.Getenv("AWS_BUCKET_NAME")),
 			Key:    aws.String(s3Key),
@@ -118,19 +134,69 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			os.Getenv("AWS_REGION"),
 			s3Key)
 
-		wordImage := WordImage{
-			Letter:   letter,
+		// Add word to letter group
+		letterGroups[letter] = append(letterGroups[letter], Word{
 			Word:     word,
 			ImageURL: imageURL,
+		})
+	}
+
+	// Update MongoDB for each letter group
+	var results []LetterWords
+	for letter, words := range letterGroups {
+		// Try to find existing letter document
+		var existingDoc LetterWords
+		err := mongoDB.FindOne(context.TODO(), bson.M{"letter": letter}).Decode(&existingDoc)
+
+		if err == nil {
+			// Update existing letter document
+			existingWords := existingDoc.Words
+			wordMap := make(map[string]bool)
+
+			// Create map of existing words
+			for _, w := range existingWords {
+				wordMap[w.Word] = true
+			}
+
+			// Add new words or update existing ones
+			for _, newWord := range words {
+				if _, exists := wordMap[newWord.Word]; exists {
+					// Update existing word
+					for i, w := range existingWords {
+						if w.Word == newWord.Word {
+							existingWords[i] = newWord
+							break
+						}
+					}
+				} else {
+					// Add new word
+					existingWords = append(existingWords, newWord)
+				}
+			}
+
+			_, err = mongoDB.UpdateOne(
+				context.TODO(),
+				bson.M{"letter": letter},
+				bson.M{"$set": bson.M{"words": existingWords}},
+			)
+		} else {
+			// Create new letter document
+			letterDoc := LetterWords{
+				Letter: letter,
+				Words:  words,
+			}
+			_, err = mongoDB.InsertOne(context.TODO(), letterDoc)
 		}
 
-		// Save to MongoDB
-		_, err = mongoDB.InsertOne(context.TODO(), wordImage)
 		if err != nil {
+			log.Printf("MongoDB operation failed for letter %s: %v", letter, err)
 			continue
 		}
 
-		results = append(results, wordImage)
+		results = append(results, LetterWords{
+			Letter: letter,
+			Words:  words,
+		})
 	}
 
 	json.NewEncoder(w).Encode(results)
